@@ -15,10 +15,17 @@ const app = express();
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Global flag to track if DB connection is being attempted
+let dbConnectionPromise: Promise<void> | null = null;
+
 // Middleware to ensure DB is connected before any request
 app.use(async (req, _res, next) => {
   try {
-    await connectDB();
+    // Reuse the same connection promise to avoid concurrent connection attempts
+    if (!dbConnectionPromise) {
+      dbConnectionPromise = connectDB();
+    }
+    await dbConnectionPromise;
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
   } catch (err) {
@@ -40,8 +47,11 @@ app.use('/', (_req, res) => {
   res.status(404).json({ success: false, message: 'Endpoint not found' });
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`🚀 Server running on port ${process.env.PORT || 3000}`);
-});
+// Only listen locally (not on Vercel serverless)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(process.env.PORT || 3000, () => {
+    console.log(`🚀 Server running on port ${process.env.PORT || 3000}`);
+  });
+}
 
 export default app;

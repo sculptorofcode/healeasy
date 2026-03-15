@@ -1,7 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useNavigation } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, useColorScheme as getSystemColorScheme } from 'react-native';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,7 +16,7 @@ import '../db/client';
 export default function RootLayout() {
   const { isAuthenticated, restoreSession, user } = useAuthStore();
   const { syncFromServer, loadVisits } = useVisitStore();
-  const navigation = useNavigation();
+  const router = useRouter();
   const systemColorScheme = getSystemColorScheme();
   
   // Subscribe to theme store changes
@@ -25,7 +25,6 @@ export default function RootLayout() {
   const effectiveColorScheme = useEffectiveColorScheme(systemColorScheme);
   
   const [isInitializing, setIsInitializing] = useState(true);
-  const lastRouteRef = useRef<string>('');
 
   // Enable background sync with network monitoring
   useBgSync();
@@ -49,7 +48,21 @@ export default function RootLayout() {
       }
     };
     initialize();
-  }, [initTheme]);
+  }, [initTheme, restoreSession]);
+
+  // Route to correct screen based on auth state after initialization
+  useEffect(() => {
+    if (!isInitializing) {
+      console.log('[RootLayout] Auth state:', { isAuthenticated, isInitializing });
+      if (!isAuthenticated) {
+        console.log('[RootLayout] Navigating to login...');
+        router.replace('/auth/login');
+      } else {
+        console.log('[RootLayout] Navigating to home...');
+        router.replace('/home');
+      }
+    }
+  }, [isAuthenticated, isInitializing, router]);
 
   // Initial sync from server when user authenticates
   useEffect(() => {
@@ -57,20 +70,7 @@ export default function RootLayout() {
       console.log('[RootLayout] Initial sync on auth...');
       syncFromServer();
     }
-  }, [isAuthenticated, isInitializing]);
-
-  // Track navigation changes
-  useEffect(() => {
-    const unsubscribeFocus = navigation.addListener('state', (state: any) => {
-      const route = state.data?.state?.routes?.[state.data.state.routes.length - 1]?.name;
-      if (route && route !== lastRouteRef.current) {
-        console.log('[Navigation] → Navigated to:', route);
-        lastRouteRef.current = route;
-      }
-    });
-
-    return unsubscribeFocus;
-  }, [navigation]);
+  }, [isAuthenticated, isInitializing, syncFromServer]);
 
   const navigationTheme = effectiveColorScheme === 'dark' ? DarkTheme : DefaultTheme;
 
@@ -94,7 +94,6 @@ export default function RootLayout() {
       <ThemeProvider value={navigationTheme}>
         <Stack 
           screenOptions={{ headerShown: false }}
-          initialRouteName={isAuthenticated ? 'home' : 'auth/login'}
         >
           <Stack.Screen name="auth/login" />
           <Stack.Screen name="auth/signup" />
